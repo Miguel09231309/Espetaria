@@ -114,7 +114,7 @@ service cloud.firestore {
         && isNonNegNumber(data.costPrice)
         && data.insumoId is string && data.insumoId.size() <= 128
         && isNonNegNumber(data.insumoQtyPerUnit)
-        && (!('extraInsumos' in data) || (data.extraInsumos is list && data.extraInsumos.size() <= 10))
+        && (!('extraInsumos' in data) || (data.extraInsumos is list && data.extraInsumos.size() <= 10 && (data.extraInsumos.size() == 0 || data.extraInsumos[0] is map)))
         && data.active is bool
         && data.imageKey is string && data.imageKey.size() <= 40
         && data.imageKey in ['espetinho_carne', 'linguica_coracao', 'bebidas_geladas', 'brasa_geral']

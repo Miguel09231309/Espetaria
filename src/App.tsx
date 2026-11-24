@@ -348,6 +348,12 @@ function MainWorkspace() {
           settings={effectiveSettings}
           customHolidays={customHolidays}
           whatsappLogs={whatsappLogs}
+          insumos={insumos}
+          products={products}
+          customers={customers}
+          orders={orders}
+          fiadoTransactions={fiadoTransactions}
+          expenses={expenses}
         />
       )}
 

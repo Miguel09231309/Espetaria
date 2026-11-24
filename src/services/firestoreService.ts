@@ -741,7 +741,7 @@ export async function addCustomHoliday(
     await addDoc(collection(db, 'customHolidays'), {
       ownerId,
       date: sanitizeString(date, 10),
-      name: sanitizeString(name, LIMITS.name),
+      name: sanitizeString(name, LIMITS.name) || 'Feriado',
       createdAt: serverTimestamp(),
     });
   } catch (error) {
@@ -782,7 +782,7 @@ export async function saveProduct(
 
     batch.set(newInsumoRef, {
       ownerId,
-      name: sanitizeString(product.name, LIMITS.name),
+      name: sanitizeString(product.name, LIMITS.name) || 'Insumo',
       unit: autoCreateInsumo.unit || 'un',
       currentStock: Math.max(0, Number(autoCreateInsumo.initialStock) || 0),
       minStock: Math.max(0, Number(autoCreateInsumo.minStock) || 0),
@@ -802,7 +802,7 @@ export async function saveProduct(
     }));
 
   const payload = {
-    name: sanitizeString(product.name, LIMITS.name),
+    name: sanitizeString(product.name, LIMITS.name) || 'Produto',
     category: product.category,
     price: Math.max(0, Number(product.price) || 0),
     costPrice: Math.max(0, Number(product.costPrice) || 0),
@@ -862,7 +862,7 @@ export async function saveInsumo(
   existingId?: string
 ): Promise<void> {
   const payload = {
-    name: sanitizeString(insumo.name, LIMITS.name),
+    name: sanitizeString(insumo.name, LIMITS.name) || 'Insumo',
     unit: insumo.unit,
     currentStock: Math.max(0, Number(insumo.currentStock) || 0),
     minStock: Math.max(0, Number(insumo.minStock) || 0),
@@ -938,7 +938,7 @@ export async function saveCustomer(
   existingId?: string
 ): Promise<string> {
   const payload = {
-    name: sanitizeString(customer.name, LIMITS.name),
+    name: sanitizeString(customer.name, LIMITS.name) || 'Cliente',
     whatsapp: sanitizeString(customer.whatsapp, LIMITS.whatsapp),
     neighborhood: sanitizeString(customer.neighborhood, LIMITS.neighborhood),
     notes: sanitizeString(customer.notes, LIMITS.description),
@@ -1334,11 +1334,11 @@ export async function registerFiadoPayment(params: {
   batch.set(doc(collection(db, 'fiadoTransactions')), {
     ownerId: params.ownerId,
     customerId: params.customer.id,
-    customerName: sanitizeString(params.customer.name, LIMITS.name),
+    customerName: sanitizeString(params.customer.name, LIMITS.name) || 'Cliente',
     orderId: '',
     type: 'pagamento',
     amount: payAmount,
-    description: sanitizeString(params.description || 'Abatimento de fiado', LIMITS.txDescription),
+    description: sanitizeString(params.description, LIMITS.txDescription) || 'Abatimento de fiado',
     paymentMethod: params.paymentMethod,
     date: sanitizeString(params.date, 10),
     createdAt: now,
@@ -1383,7 +1383,7 @@ export async function addDailyExpense(
     await addDoc(collection(db, 'dailyExpenses'), {
       ownerId,
       date: sanitizeString(expense.date, 10),
-      description: sanitizeString(expense.description, LIMITS.expenseDescription),
+      description: sanitizeString(expense.description, LIMITS.expenseDescription) || 'Despesa operacional',
       category: expense.category,
       amount: Math.max(0.01, Number(expense.amount) || 0),
       createdAt: serverTimestamp(),
@@ -1414,11 +1414,11 @@ export async function logWhatsappDispatch(params: {
     await addDoc(collection(db, 'whatsappLogs'), {
       ownerId: params.ownerId,
       customerId: sanitizeString(params.customerId, LIMITS.id),
-      customerName: sanitizeString(params.customerName || 'Cliente', LIMITS.name),
+      customerName: sanitizeString(params.customerName, LIMITS.name) || 'Cliente',
       whatsapp: sanitizeString(params.whatsapp, LIMITS.whatsapp),
       orderId: sanitizeString(params.orderId, LIMITS.id),
       type: params.type,
-      message: sanitizeString(params.message, LIMITS.whatsappMessage),
+      message: sanitizeString(params.message, LIMITS.whatsappMessage) || 'Mensagem WhatsApp',
       createdAt: serverTimestamp(),
     });
   } catch (error) {
@@ -1445,11 +1445,11 @@ export async function addManualFiadoDebit(params: {
   batch.set(doc(collection(db, 'fiadoTransactions')), {
     ownerId: params.ownerId,
     customerId: params.customer.id,
-    customerName: sanitizeString(params.customer.name, LIMITS.name),
+    customerName: sanitizeString(params.customer.name, LIMITS.name) || 'Cliente',
     orderId: '',
     type: 'debito',
     amount: debitAmount,
-    description: sanitizeString(params.description || 'Lançamento manual na caderneta', LIMITS.txDescription),
+    description: sanitizeString(params.description, LIMITS.txDescription) || 'Lançamento manual na caderneta',
     paymentMethod: 'fiado',
     date: sanitizeString(params.date, 10),
     createdAt: now,
@@ -1460,4 +1460,323 @@ export async function addManualFiadoDebit(params: {
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `customers/${params.customer.id}`);
   }
+}
+
+export async function importBackupToFirestore(
+  ownerId: string,
+  rawPayload: unknown
+): Promise<{ importedCount: number }> {
+  if (!rawPayload || typeof rawPayload !== 'object') {
+    throw new Error('Arquivo ou dados de backup inválidos.');
+  }
+
+  const data = rawPayload as Record<string, unknown>;
+  const now = serverTimestamp();
+  const operations: Array<(batch: ReturnType<typeof writeBatch>) => void> = [];
+
+  const validDate = (val: unknown, fallback = '2026-01-04'): string => {
+    const str = typeof val === 'string' ? val.trim().slice(0, 10) : '';
+    return /^\d{4}-\d{2}-\d{2}$/.test(str) ? str : fallback;
+  };
+
+  if (data.settings && typeof data.settings === 'object') {
+    const s = data.settings as Record<string, unknown>;
+    operations.push((batch) => {
+      batch.update(doc(db, 'storeSettings', ownerId), {
+        storeName: sanitizeString(String(s.storeName || ''), LIMITS.storeName) || 'Brasa de Domingo',
+        ownerWhatsapp: sanitizeString(String(s.ownerWhatsapp || ''), LIMITS.whatsapp),
+        pixKey: sanitizeString(String(s.pixKey || ''), LIMITS.pixKey),
+        address: sanitizeString(String(s.address || ''), LIMITS.address),
+        operatingHours: sanitizeString(String(s.operatingHours || ''), LIMITS.operatingHours),
+        customerNotice: sanitizeString(String(s.customerNotice || ''), LIMITS.customerNotice),
+        confirmTemplate: sanitizeString(String(s.confirmTemplate || ''), LIMITS.template),
+        readyTemplate: sanitizeString(String(s.readyTemplate || ''), LIMITS.template),
+        fiadoTemplate: sanitizeString(String(s.fiadoTemplate || ''), LIMITS.template),
+        updatedAt: now,
+      });
+    });
+  }
+
+  const insumoIdMap: Record<string, string> = {};
+  if (Array.isArray(data.insumos)) {
+    const existingSnap = await getDocs(query(collection(db, 'insumos'), where('ownerId', '==', ownerId)));
+    const existingByName = new Map<string, string>();
+    existingSnap.docs.forEach((d) => {
+      const name = String(d.data().name || '');
+      existingByName.set(normalizeKey(name), d.id);
+    });
+
+    for (const raw of data.insumos) {
+      if (!raw || typeof raw !== 'object') continue;
+      const item = raw as Record<string, unknown>;
+      const name = sanitizeString(String(item.name || ''), LIMITS.name);
+      if (!name) continue;
+      const unit = ['un', 'kg', 'L', 'pct'].includes(String(item.unit)) ? String(item.unit) : 'un';
+      const existingId = existingByName.get(normalizeKey(name));
+      const targetRef = existingId ? doc(db, 'insumos', existingId) : doc(collection(db, 'insumos'));
+      if (typeof item.id === 'string') {
+        insumoIdMap[item.id] = targetRef.id;
+      }
+
+      if (existingId) {
+        operations.push((batch) => {
+          batch.update(targetRef, {
+            name,
+            unit,
+            currentStock: Math.max(0, Number(item.currentStock) || 0),
+            minStock: Math.max(0, Number(item.minStock) || 0),
+            unitCost: Math.max(0, Number(item.unitCost) || 0),
+            supplier: sanitizeString(String(item.supplier || ''), LIMITS.supplier),
+            updatedAt: now,
+          });
+        });
+      } else {
+        operations.push((batch) => {
+          batch.set(targetRef, {
+            ownerId,
+            name,
+            unit,
+            currentStock: Math.max(0, Number(item.currentStock) || 0),
+            minStock: Math.max(0, Number(item.minStock) || 0),
+            unitCost: Math.max(0, Number(item.unitCost) || 0),
+            supplier: sanitizeString(String(item.supplier || ''), LIMITS.supplier),
+            createdAt: now,
+            updatedAt: now,
+          });
+        });
+      }
+    }
+  }
+
+  const productIdMap: Record<string, string> = {};
+  if (Array.isArray(data.products)) {
+    const existingSnap = await getDocs(query(collection(db, 'products'), where('ownerId', '==', ownerId)));
+    const existingByName = new Map<string, string>();
+    existingSnap.docs.forEach((d) => {
+      existingByName.set(normalizeKey(String(d.data().name || '')), d.id);
+    });
+
+    for (const raw of data.products) {
+      if (!raw || typeof raw !== 'object') continue;
+      const p = raw as Record<string, unknown>;
+      const name = sanitizeString(String(p.name || ''), LIMITS.name);
+      if (!name) continue;
+      const category = ['espetinho', 'bebida', 'acompanhamento', 'combo'].includes(String(p.category))
+        ? String(p.category)
+        : 'espetinho';
+      const imageKey = ['espetinho_carne', 'linguica_coracao', 'bebidas_geladas', 'brasa_geral'].includes(
+        String(p.imageKey)
+      )
+        ? String(p.imageKey)
+        : 'brasa_geral';
+
+      const mappedPrimary = insumoIdMap[String(p.insumoId || '')] || sanitizeString(String(p.insumoId || ''), LIMITS.id);
+      const rawExtras = Array.isArray(p.extraInsumos) ? p.extraInsumos : [];
+      const mappedExtras = rawExtras
+        .filter((e): e is Record<string, unknown> => Boolean(e && typeof e === 'object'))
+        .slice(0, 10)
+        .map((e) => ({
+          insumoId: insumoIdMap[String(e.insumoId || '')] || sanitizeString(String(e.insumoId || ''), LIMITS.id),
+          qtyPerUnit: Math.max(0.01, Number(e.qtyPerUnit) || 1),
+        }))
+        .filter((e) => e.insumoId);
+
+      const existingId = existingByName.get(normalizeKey(name));
+      const targetRef = existingId ? doc(db, 'products', existingId) : doc(collection(db, 'products'));
+      if (typeof p.id === 'string') {
+        productIdMap[p.id] = targetRef.id;
+      }
+
+      const body = {
+        name,
+        category,
+        price: Math.max(0, Number(p.price) || 0),
+        costPrice: Math.max(0, Number(p.costPrice) || 0),
+        insumoId: mappedPrimary,
+        insumoQtyPerUnit: mappedPrimary ? Math.max(0.01, Number(p.insumoQtyPerUnit) || 1) : 0,
+        extraInsumos: mappedExtras,
+        active: p.active !== false,
+        imageKey,
+        description: sanitizeString(String(p.description || ''), LIMITS.description),
+        updatedAt: now,
+      };
+
+      if (existingId) {
+        operations.push((batch) => batch.update(targetRef, body));
+      } else {
+        operations.push((batch) => batch.set(targetRef, { ownerId, ...body, createdAt: now }));
+      }
+    }
+  }
+
+  const customerIdMap: Record<string, string> = {};
+  if (Array.isArray(data.customers)) {
+    const existingSnap = await getDocs(query(collection(db, 'customers'), where('ownerId', '==', ownerId)));
+    const existingByPhoneOrName = new Map<string, string>();
+    existingSnap.docs.forEach((d) => {
+      const cData = d.data();
+      const phone = String(cData.whatsapp || '').replace(/\D/g, '');
+      if (phone) existingByPhoneOrName.set(`p:${phone}`, d.id);
+      existingByPhoneOrName.set(`n:${normalizeKey(String(cData.name || ''))}`, d.id);
+    });
+
+    for (const raw of data.customers) {
+      if (!raw || typeof raw !== 'object') continue;
+      const c = raw as Record<string, unknown>;
+      const name = sanitizeString(String(c.name || ''), LIMITS.name);
+      if (!name) continue;
+      const whatsapp = sanitizeString(String(c.whatsapp || ''), LIMITS.whatsapp);
+      const phone = whatsapp.replace(/\D/g, '');
+      const existingId =
+        (phone ? existingByPhoneOrName.get(`p:${phone}`) : undefined) ||
+        existingByPhoneOrName.get(`n:${normalizeKey(name)}`);
+
+      if (existingId) {
+        if (typeof c.id === 'string') customerIdMap[c.id] = existingId;
+      } else {
+        const ref = doc(collection(db, 'customers'));
+        if (typeof c.id === 'string') customerIdMap[c.id] = ref.id;
+        operations.push((batch) => {
+          batch.set(ref, {
+            ownerId,
+            name,
+            whatsapp,
+            neighborhood: sanitizeString(String(c.neighborhood || ''), LIMITS.neighborhood),
+            notes: sanitizeString(String(c.notes || ''), LIMITS.description),
+            fiadoBalance: Math.max(0, Number(c.fiadoBalance) || 0),
+            totalSpent: Math.max(0, Number(c.totalSpent) || 0),
+            ordersCount: Math.max(0, Number(c.ordersCount) || 0),
+            createdAt: now,
+            updatedAt: now,
+          });
+        });
+      }
+    }
+  }
+
+  if (Array.isArray(data.customHolidays)) {
+    for (const raw of data.customHolidays) {
+      if (!raw || typeof raw !== 'object') continue;
+      const h = raw as Record<string, unknown>;
+      const name = sanitizeString(String(h.name || ''), LIMITS.name);
+      if (!name) continue;
+      operations.push((batch) => {
+        batch.set(doc(collection(db, 'customHolidays')), {
+          ownerId,
+          date: validDate(h.date),
+          name,
+          createdAt: now,
+        });
+      });
+    }
+  }
+
+  if (Array.isArray(data.orders)) {
+    const existingOrders = await getDocs(query(collection(db, 'orders'), where('ownerId', '==', ownerId)));
+    const existingNumbers = new Set<number>(existingOrders.docs.map((d) => Number(d.data().orderNumber) || 0));
+
+    for (const raw of data.orders) {
+      if (!raw || typeof raw !== 'object') continue;
+      const o = raw as Record<string, unknown>;
+      const orderNumber = Math.max(1, Number(o.orderNumber) || 0);
+      if (existingNumbers.has(orderNumber)) continue;
+      const rawItems = Array.isArray(o.items) ? o.items : [];
+      if (rawItems.length === 0) continue;
+
+      const items = rawItems
+        .filter((i): i is Record<string, unknown> => Boolean(i && typeof i === 'object'))
+        .slice(0, LIMITS.maxOrderItems)
+        .map((i) => ({
+          productId: productIdMap[String(i.productId || '')] || sanitizeString(String(i.productId || ''), LIMITS.id),
+          productName: sanitizeString(String(i.productName || ''), LIMITS.name) || 'Item',
+          category: ['espetinho', 'bebida', 'acompanhamento', 'combo'].includes(String(i.category))
+            ? (String(i.category) as OrderItem['category'])
+            : 'espetinho',
+          quantity: Math.max(1, Number(i.quantity) || 1),
+          unitPrice: Math.max(0, Number(i.unitPrice) || 0),
+          unitCost: Math.max(0, Number(i.unitCost) || 0),
+          subtotal: Math.max(0, Number(i.subtotal) || 0),
+          insumoId: insumoIdMap[String(i.insumoId || '')] || sanitizeString(String(i.insumoId || ''), LIMITS.id),
+          insumoQtyPerUnit: Math.max(0, Number(i.insumoQtyPerUnit) || 0),
+        }));
+
+      if (items.length === 0) continue;
+      existingNumbers.add(orderNumber);
+
+      operations.push((batch) => {
+        batch.set(doc(collection(db, 'orders')), {
+          ownerId,
+          orderNumber,
+          saleDate: validDate(o.saleDate),
+          dayType: o.dayType === 'feriado' ? 'feriado' : 'domingo',
+          holidayName: sanitizeString(String(o.holidayName || ''), LIMITS.name),
+          customerId: customerIdMap[String(o.customerId || '')] || '',
+          customerName: sanitizeString(String(o.customerName || ''), LIMITS.name) || 'Cliente',
+          customerWhatsapp: sanitizeString(String(o.customerWhatsapp || ''), LIMITS.whatsapp),
+          deliveryType: ['balcao', 'retirada', 'entrega'].includes(String(o.deliveryType))
+            ? String(o.deliveryType)
+            : 'balcao',
+          items,
+          subtotal: Math.max(0, Number(o.subtotal) || 0),
+          discount: Math.max(0, Number(o.discount) || 0),
+          total: Math.max(0, Number(o.total) || 0),
+          estimatedCost: Math.max(0, Number(o.estimatedCost) || 0),
+          estimatedProfit: Number(o.estimatedProfit) || 0,
+          paymentMethod: ['pix', 'dinheiro', 'cartao', 'fiado'].includes(String(o.paymentMethod))
+            ? String(o.paymentMethod)
+            : 'pix',
+          paymentStatus: ['pago', 'fiado_pendente', 'fiado_parcial'].includes(String(o.paymentStatus))
+            ? String(o.paymentStatus)
+            : 'pago',
+          paidAmount: Math.max(0, Number(o.paidAmount) || 0),
+          orderStatus: ['novo', 'confirmado', 'na_brasa', 'pronto', 'entregue', 'cancelado'].includes(
+            String(o.orderStatus)
+          )
+            ? String(o.orderStatus)
+            : 'confirmado',
+          notes: sanitizeString(String(o.notes || ''), LIMITS.notes),
+          createdAt: now,
+          updatedAt: now,
+        });
+      });
+    }
+  }
+
+  const rawExpenses = Array.isArray(data.expenses)
+    ? data.expenses
+    : Array.isArray(data.dailyExpenses)
+      ? data.dailyExpenses
+      : [];
+  for (const raw of rawExpenses) {
+    if (!raw || typeof raw !== 'object') continue;
+    const e = raw as Record<string, unknown>;
+    const desc = sanitizeString(String(e.description || ''), LIMITS.expenseDescription);
+    const amount = Number(e.amount) || 0;
+    if (!desc || amount <= 0) continue;
+    operations.push((batch) => {
+      batch.set(doc(collection(db, 'dailyExpenses')), {
+        ownerId,
+        date: validDate(e.date),
+        description: desc,
+        category: ['carvao', 'insumos', 'gelo', 'gas', 'outros'].includes(String(e.category))
+          ? String(e.category)
+          : 'outros',
+        amount: Math.max(0.01, Number(amount.toFixed(2))),
+        createdAt: now,
+      });
+    });
+  }
+
+  for (let i = 0; i < operations.length; i += 400) {
+    const chunk = operations.slice(i, i + 400);
+    const batch = writeBatch(db);
+    chunk.forEach((op) => op(batch));
+    try {
+      await batch.commit();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, 'importBackupToFirestore');
+    }
+  }
+
+  return { importedCount: operations.length };
 }

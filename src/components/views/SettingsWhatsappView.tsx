@@ -1,11 +1,22 @@
-import React, { useState } from 'react';
-import { Calendar, Check, MessageCircle, Plus, Trash2 } from 'lucide-react';
-import { CustomHoliday, StoreSettings, WhatsappLog } from '../../types';
-import { formatDateBR, getBrazilianNationalHolidays } from '../../utils/holidays';
+import React, { useEffect, useRef, useState } from 'react';
+import { Calendar, Check, Download, MessageCircle, Plus, Trash2, Upload } from 'lucide-react';
+import {
+  CustomHoliday,
+  Customer,
+  DailyExpense,
+  FiadoTransaction,
+  Insumo,
+  Order,
+  Product,
+  StoreSettings,
+  WhatsappLog,
+} from '../../types';
+import { formatDateBR, getBrazilianNationalHolidays, toLocalDateString } from '../../utils/holidays';
 import { buildWhatsAppLink, formatWhatsappDisplay } from '../../utils/format';
 import {
   addCustomHoliday,
   deleteCustomHoliday,
+  importBackupToFirestore,
   saveStoreSettings,
 } from '../../services/firestoreService';
 
@@ -14,6 +25,12 @@ interface Props {
   settings: StoreSettings;
   customHolidays: CustomHoliday[];
   whatsappLogs: WhatsappLog[];
+  insumos: Insumo[];
+  products: Product[];
+  customers: Customer[];
+  orders: Order[];
+  fiadoTransactions: FiadoTransaction[];
+  expenses: DailyExpense[];
 }
 
 const LOG_TYPE_LABELS: Record<WhatsappLog['type'], string> = {
@@ -28,6 +45,12 @@ export const SettingsWhatsappView: React.FC<Props> = ({
   settings,
   customHolidays,
   whatsappLogs,
+  insumos,
+  products,
+  customers,
+  orders,
+  fiadoTransactions,
+  expenses,
 }) => {
   const [form, setForm] = useState({
     storeName: settings.storeName,
@@ -40,12 +63,38 @@ export const SettingsWhatsappView: React.FC<Props> = ({
     readyTemplate: settings.readyTemplate,
     fiadoTemplate: settings.fiadoTemplate,
   });
+
+  useEffect(() => {
+    setForm({
+      storeName: settings.storeName,
+      ownerWhatsapp: settings.ownerWhatsapp,
+      pixKey: settings.pixKey,
+      address: settings.address,
+      operatingHours: settings.operatingHours,
+      customerNotice: settings.customerNotice,
+      confirmTemplate: settings.confirmTemplate,
+      readyTemplate: settings.readyTemplate,
+      fiadoTemplate: settings.fiadoTemplate,
+    });
+  }, [settings]);
+
   const [saving, setSaving] = useState(false);
   const [savedToast, setSavedToast] = useState(false);
 
   const [holidayDate, setHolidayDate] = useState('');
   const [holidayName, setHolidayName] = useState('');
   const [addingHoliday, setAddingHoliday] = useState(false);
+
+  const [backupMessage, setBackupMessage] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [hasLocalData, setHasLocalData] = useState<boolean>(() => {
+    try {
+      return Boolean(localStorage.getItem('brasa_domingo_standalone_v1'));
+    } catch {
+      return false;
+    }
+  });
 
   const currentYear = new Date().getFullYear();
   const nationalHolidays = Object.entries(getBrazilianNationalHolidays(currentYear)).sort(
@@ -74,6 +123,67 @@ export const SettingsWhatsappView: React.FC<Props> = ({
       setHolidayName('');
     } finally {
       setAddingHoliday(false);
+    }
+  };
+
+  const handleExportBackup = () => {
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      settings,
+      customHolidays,
+      insumos,
+      products,
+      customers,
+      orders,
+      fiadoTransactions,
+      expenses,
+      whatsappLogs,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `brasa-domingo-backup-${toLocalDateString(new Date())}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setBackupMessage('Backup JSON exportado com sucesso.');
+  };
+
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    setBackupMessage(null);
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      const { importedCount } = await importBackupToFirestore(ownerId, parsed);
+      setBackupMessage(`Importação concluída (${importedCount} registros gravados no banco de dados).`);
+    } catch (err) {
+      setBackupMessage(err instanceof Error ? err.message : 'Erro ao importar arquivo JSON.');
+    } finally {
+      setImporting(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleMigrateLocalStorage = async () => {
+    setImporting(true);
+    setBackupMessage(null);
+    try {
+      const raw = localStorage.getItem('brasa_domingo_standalone_v1');
+      if (!raw) {
+        setHasLocalData(false);
+        return;
+      }
+      const parsed = JSON.parse(raw);
+      const { importedCount } = await importBackupToFirestore(ownerId, parsed);
+      setBackupMessage(`Dados do navegador salvos no banco de dados (${importedCount} registros sincronizados).`);
+      setHasLocalData(false);
+    } catch (err) {
+      setBackupMessage(err instanceof Error ? err.message : 'Erro ao migrar dados locais.');
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -356,6 +466,57 @@ export const SettingsWhatsappView: React.FC<Props> = ({
                   </div>
                 ))}
               </div>
+            )}
+          </div>
+          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 space-y-4">
+            <div>
+              <h3 className="text-base font-semibold text-white">Backup dos Dados</h3>
+              <p className="text-xs text-zinc-400 mt-0.5">
+                Todos os pedidos, produtos, insumos e clientes ficam salvos automaticamente no banco de dados. Você também pode exportar ou restaurar cópias em JSON.
+              </p>
+            </div>
+
+            {hasLocalData && (
+              <button
+                type="button"
+                disabled={importing}
+                onClick={() => void handleMigrateLocalStorage()}
+                className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-semibold text-white bg-orange-600 rounded-lg hover:bg-orange-700 disabled:opacity-50"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                {importing ? 'Importando...' : 'Importar dados locais do navegador para o Banco de Dados'}
+              </button>
+            )}
+
+            <div className="flex flex-wrap gap-2.5">
+              <button
+                type="button"
+                onClick={handleExportBackup}
+                className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium text-zinc-100 bg-zinc-800 border border-zinc-700 rounded-lg hover:bg-zinc-700"
+              >
+                <Download className="w-3.5 h-3.5" />
+                Exportar Backup JSON
+              </button>
+              <button
+                type="button"
+                disabled={importing}
+                onClick={() => fileInputRef.current?.click()}
+                className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium text-zinc-100 bg-zinc-800 border border-zinc-700 rounded-lg hover:bg-zinc-700 disabled:opacity-50"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                {importing ? 'Importando...' : 'Importar Backup JSON'}
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="application/json,.json"
+                onChange={(e) => void handleImportFile(e)}
+                className="hidden"
+              />
+            </div>
+
+            {backupMessage && (
+              <p className="text-xs text-emerald-400">{backupMessage}</p>
             )}
           </div>
         </div>
