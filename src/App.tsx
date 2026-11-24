@@ -79,6 +79,7 @@ function MainWorkspace() {
   const [authReady, setAuthReady] = useState(false);
   const [loggingIn, setLoggingIn] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [authErrorCode, setAuthErrorCode] = useState<string | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [retryTick, setRetryTick] = useState(0);
 
@@ -114,10 +115,12 @@ function MainWorkspace() {
         if (mounted && res?.user) {
           setUser(res.user);
           setAuthError(null);
+          setAuthErrorCode(null);
         }
       })
       .catch((err) => {
         if (mounted) {
+          setAuthErrorCode((err as { code?: string })?.code || null);
           setAuthError(formatAuthError(err));
         }
       });
@@ -274,6 +277,7 @@ function MainWorkspace() {
 
   const handleLogin = async (role: AccessRole) => {
     setAuthError(null);
+    setAuthErrorCode(null);
     setLoggingIn(true);
     updateRole(role);
     try {
@@ -282,6 +286,7 @@ function MainWorkspace() {
         setUser(result.user);
       }
     } catch (err) {
+      setAuthErrorCode((err as { code?: string })?.code || null);
       setAuthError(formatAuthError(err));
     } finally {
       setLoggingIn(false);
@@ -290,11 +295,13 @@ function MainWorkspace() {
 
   const handleLoginRedirect = async (role: AccessRole) => {
     setAuthError(null);
+    setAuthErrorCode(null);
     setLoggingIn(true);
     updateRole(role);
     try {
       await signInWithRedirect(auth, googleProvider);
     } catch (err) {
+      setAuthErrorCode((err as { code?: string })?.code || null);
       setAuthError(formatAuthError(err));
       setLoggingIn(false);
     }
@@ -322,6 +329,7 @@ function MainWorkspace() {
         onLogin={handleLogin}
         onLoginRedirect={handleLoginRedirect}
         authError={authError}
+        authErrorCode={authErrorCode}
         loggingIn={loggingIn}
       />
     );

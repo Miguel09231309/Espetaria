@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Calendar, Flame, LogIn, ShoppingBag, MessageCircle, ShieldCheck, UserCheck } from 'lucide-react';
+import { Calendar, ExternalLink, Flame, LogIn, ShoppingBag, MessageCircle, ShieldCheck, UserCheck } from 'lucide-react';
+import firebaseConfig from '../../firebase-applet-config.json';
 import { IMAGE_ASSETS, PUBLIC_PREVIEW_PRODUCTS } from '../data/seedData';
 import { checkOperatingDay, formatDateBR, getDefaultOperatingDate, toLocalDateString } from '../utils/holidays';
 import { formatBRL } from '../utils/format';
@@ -10,6 +11,7 @@ interface Props {
   onLogin: (role: AccessRole) => Promise<void>;
   onLoginRedirect: (role: AccessRole) => Promise<void>;
   authError: string | null;
+  authErrorCode: string | null;
   loggingIn: boolean;
 }
 
@@ -17,6 +19,7 @@ export const AuthGate: React.FC<Props> = ({
   onLogin,
   onLoginRedirect,
   authError,
+  authErrorCode,
   loggingIn,
 }) => {
   const [showPublicMenu, setShowPublicMenu] = useState(false);
@@ -87,31 +90,53 @@ export const AuthGate: React.FC<Props> = ({
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-6 py-10">
         {authError && (
-          <div className="mb-6 p-4 rounded-xl border border-red-900 bg-red-950/70 text-sm text-red-200 flex flex-wrap items-center justify-between gap-3">
-            <div className="space-y-1 max-w-2xl">
+          <div className="mb-6 p-4 rounded-xl border border-red-900 bg-red-950/70 text-sm text-red-200 flex flex-wrap items-center justify-between gap-4">
+            <div className="space-y-1.5 max-w-2xl">
               <div className="font-semibold text-red-100">Falha ao conectar com o Google</div>
               <p className="text-xs text-red-300 leading-relaxed">{authError}</p>
+              {authErrorCode === 'auth/unauthorized-domain' && typeof window !== 'undefined' && (
+                <p className="text-xs text-amber-200 leading-relaxed">
+                  No Firebase Console, acesse <strong>Authentication → Settings → Authorized domains</strong> e adicione o domínio{' '}
+                  <span className="font-mono font-semibold text-white bg-black/40 px-1.5 py-0.5 rounded">
+                    {window.location.hostname}
+                  </span>.
+                </p>
+              )}
             </div>
             <div className="flex flex-wrap items-center gap-2 shrink-0">
-              {typeof window !== 'undefined' && window.self !== window.top && (
+              {authErrorCode === 'auth/unauthorized-domain' ? (
                 <a
-                  href={window.location.href}
+                  href={`https://console.firebase.google.com/project/${firebaseConfig.projectId}/authentication/settings`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-zinc-100 bg-zinc-800 border border-zinc-700 rounded-lg hover:bg-zinc-700 transition-colors whitespace-nowrap"
+                  className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-white bg-orange-600 rounded-lg hover:bg-orange-700 transition-colors whitespace-nowrap"
                 >
-                  Abrir em nova aba
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  Autorizar domínio no Firebase
                 </a>
+              ) : (
+                <>
+                  {typeof window !== 'undefined' && window.self !== window.top && (
+                    <a
+                      href={window.location.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-zinc-100 bg-zinc-800 border border-zinc-700 rounded-lg hover:bg-zinc-700 transition-colors whitespace-nowrap"
+                    >
+                      Abrir em nova aba
+                    </a>
+                  )}
+                  <button
+                    type="button"
+                    disabled={loggingIn}
+                    onClick={() => void onLoginRedirect(lastRole)}
+                    className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-white bg-orange-600 rounded-lg hover:bg-orange-700 transition-colors whitespace-nowrap disabled:opacity-60"
+                  >
+                    <LogIn className="w-3.5 h-3.5" />
+                    Entrar sem popup
+                  </button>
+                </>
               )}
-              <button
-                type="button"
-                disabled={loggingIn}
-                onClick={() => void onLoginRedirect(lastRole)}
-                className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-white bg-orange-600 rounded-lg hover:bg-orange-700 transition-colors whitespace-nowrap disabled:opacity-60"
-              >
-                <LogIn className="w-3.5 h-3.5" />
-                Entrar sem popup
-              </button>
             </div>
           </div>
         )}
