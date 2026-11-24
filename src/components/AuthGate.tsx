@@ -8,12 +8,19 @@ export type AccessRole = 'owner' | 'client';
 
 interface Props {
   onLogin: (role: AccessRole) => Promise<void>;
+  onLoginRedirect: (role: AccessRole) => Promise<void>;
   authError: string | null;
   loggingIn: boolean;
 }
 
-export const AuthGate: React.FC<Props> = ({ onLogin, authError, loggingIn }) => {
+export const AuthGate: React.FC<Props> = ({
+  onLogin,
+  onLoginRedirect,
+  authError,
+  loggingIn,
+}) => {
   const [showPublicMenu, setShowPublicMenu] = useState(false);
+  const [lastRole, setLastRole] = useState<AccessRole>('owner');
 
   const todayStr = toLocalDateString(new Date());
   const todayInfo = checkOperatingDay(todayStr, []);
@@ -52,7 +59,10 @@ export const AuthGate: React.FC<Props> = ({ onLogin, authError, loggingIn }) => 
           <div className="flex items-center gap-2.5 shrink-0">
             <button
               type="button"
-              onClick={() => void onLogin('client')}
+              onClick={() => {
+                setLastRole('client');
+                void onLogin('client');
+              }}
               disabled={loggingIn}
               className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-zinc-200 bg-zinc-800 border border-zinc-700 rounded-lg hover:bg-zinc-700 transition-colors whitespace-nowrap shrink-0 disabled:opacity-60"
             >
@@ -61,7 +71,10 @@ export const AuthGate: React.FC<Props> = ({ onLogin, authError, loggingIn }) => 
             </button>
             <button
               type="button"
-              onClick={() => void onLogin('owner')}
+              onClick={() => {
+                setLastRole('owner');
+                void onLogin('owner');
+              }}
               disabled={loggingIn}
               className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-orange-600 rounded-lg hover:bg-orange-700 transition-colors whitespace-nowrap shrink-0 disabled:opacity-60"
             >
@@ -73,6 +86,35 @@ export const AuthGate: React.FC<Props> = ({ onLogin, authError, loggingIn }) => 
       </header>
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-6 py-10">
+        {authError && (
+          <div className="mb-6 p-4 rounded-xl border border-red-900 bg-red-950/70 text-sm text-red-200 flex flex-wrap items-center justify-between gap-3">
+            <div className="space-y-1 max-w-2xl">
+              <div className="font-semibold text-red-100">Falha ao conectar com o Google</div>
+              <p className="text-xs text-red-300 leading-relaxed">{authError}</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              {typeof window !== 'undefined' && window.self !== window.top && (
+                <a
+                  href={window.location.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-zinc-100 bg-zinc-800 border border-zinc-700 rounded-lg hover:bg-zinc-700 transition-colors whitespace-nowrap"
+                >
+                  Abrir em nova aba
+                </a>
+              )}
+              <button
+                type="button"
+                disabled={loggingIn}
+                onClick={() => void onLoginRedirect(lastRole)}
+                className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-white bg-orange-600 rounded-lg hover:bg-orange-700 transition-colors whitespace-nowrap disabled:opacity-60"
+              >
+                <LogIn className="w-3.5 h-3.5" />
+                Entrar sem popup
+              </button>
+            </div>
+          </div>
+        )}
         {!showPublicMenu ? (
           <div className="space-y-10">
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
@@ -95,16 +137,13 @@ export const AuthGate: React.FC<Props> = ({ onLogin, authError, loggingIn }) => 
                   Entre como Dono para gerenciar pedidos, estoque de insumos, fiado, WhatsApp e lucro semanal — ou entre como Cliente para fazer pedidos com baixa automática no estoque.
                 </p>
 
-                {authError && (
-                  <div className="p-3.5 rounded-lg border border-red-900 bg-red-950/60 text-sm text-red-300">
-                    {authError}
-                  </div>
-                )}
-
                 <div className="flex flex-wrap items-center gap-3 pt-2">
                   <button
                     type="button"
-                    onClick={() => void onLogin('owner')}
+                    onClick={() => {
+                      setLastRole('owner');
+                      void onLogin('owner');
+                    }}
                     disabled={loggingIn}
                     className="inline-flex items-center gap-2.5 px-5 py-3 text-sm font-semibold text-white bg-orange-600 rounded-lg hover:bg-orange-700 transition-colors whitespace-nowrap shrink-0 disabled:opacity-60"
                   >
@@ -113,7 +152,10 @@ export const AuthGate: React.FC<Props> = ({ onLogin, authError, loggingIn }) => 
                   </button>
                   <button
                     type="button"
-                    onClick={() => void onLogin('client')}
+                    onClick={() => {
+                      setLastRole('client');
+                      void onLogin('client');
+                    }}
                     disabled={loggingIn}
                     className="inline-flex items-center gap-2 px-5 py-3 text-sm font-semibold text-zinc-100 bg-zinc-900 border border-zinc-700 rounded-lg hover:bg-zinc-800 transition-colors whitespace-nowrap shrink-0 disabled:opacity-60"
                   >
@@ -206,8 +248,12 @@ export const AuthGate: React.FC<Props> = ({ onLogin, authError, loggingIn }) => 
               </div>
               <button
                 type="button"
-                onClick={() => void onLogin('client')}
-                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-orange-600 rounded-lg hover:bg-orange-700 transition-colors whitespace-nowrap shrink-0"
+                disabled={loggingIn}
+                onClick={() => {
+                  setLastRole('client');
+                  void onLogin('client');
+                }}
+                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-orange-600 rounded-lg hover:bg-orange-700 transition-colors whitespace-nowrap shrink-0 disabled:opacity-60"
               >
                 <ShoppingBag className="w-4 h-4" />
                 Entrar como Cliente e Pedir

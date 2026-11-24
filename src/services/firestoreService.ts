@@ -87,7 +87,8 @@ function sanitizeOrderItem(item: OrderItem, products?: Product[]): OrderItem {
 export function subscribeOwnerCollection<T>(
   collectionName: string,
   ownerId: string,
-  onData: (items: T[]) => void
+  onData: (items: T[]) => void,
+  onError?: (error: Error) => void
 ) {
   const q = query(collection(db, collectionName), where('ownerId', '==', ownerId));
   return onSnapshot(
@@ -100,14 +101,23 @@ export function subscribeOwnerCollection<T>(
       onData(list);
     },
     (error) => {
-      handleFirestoreError(error, OperationType.LIST, collectionName);
+      try {
+        handleFirestoreError(error, OperationType.LIST, collectionName);
+      } catch (wrapped) {
+        if (onError && wrapped instanceof Error) {
+          onError(wrapped);
+        } else {
+          throw wrapped;
+        }
+      }
     }
   );
 }
 
 export function subscribeStoreSettings(
   ownerId: string,
-  onData: (settings: StoreSettings | null) => void
+  onData: (settings: StoreSettings | null) => void,
+  onError?: (error: Error) => void
 ) {
   const ref = doc(db, 'storeSettings', ownerId);
   return onSnapshot(
@@ -120,7 +130,15 @@ export function subscribeStoreSettings(
       }
     },
     (error) => {
-      handleFirestoreError(error, OperationType.GET, `storeSettings/${ownerId}`);
+      try {
+        handleFirestoreError(error, OperationType.GET, `storeSettings/${ownerId}`);
+      } catch (wrapped) {
+        if (onError && wrapped instanceof Error) {
+          onError(wrapped);
+        } else {
+          throw wrapped;
+        }
+      }
     }
   );
 }

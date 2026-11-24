@@ -1,6 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
-import { onAuthStateChanged, signInWithPopup, signOut, User } from 'firebase/auth';
-import { Flame, LogOut } from 'lucide-react';
+import {
+  getRedirectResult,
+  onAuthStateChanged,
+  signInWithPopup,
+  signInWithRedirect,
+  signOut,
+  User,
+} from 'firebase/auth';
+import { AlertTriangle, Flame, LogOut, RefreshCw } from 'lucide-react';
 import { auth, googleProvider } from './lib/firebase';
 import {
   ActiveTab,
@@ -39,14 +46,45 @@ import { SettingsWhatsappView } from './components/views/SettingsWhatsappView';
 
 const ROLE_STORAGE_KEY = 'brasa_access_role';
 
+function formatAuthError(err: unknown): string {
+  const code = (err as { code?: string })?.code || '';
+  const msg = err instanceof Error ? err.message : String(err);
+
+  if (code === 'auth/popup-blocked') {
+    return 'O navegador bloqueou a janela do Google. Libere os popups para este site ou clique em "Entrar sem popup (redirecionar)".';
+  }
+  if (code === 'auth/popup-closed-by-user') {
+    return 'A janela de login foi fechada antes de concluir. Tente novamente ou use "Entrar sem popup (redirecionar)".';
+  }
+  if (code === 'auth/cancelled-popup-request') {
+    return 'Já existe uma tentativa de login aberta. Aguarde um instante e tente novamente.';
+  }
+  if (code === 'auth/unauthorized-domain') {
+    return `Este endereço (${window.location.hostname}) precisa estar autorizado no Firebase Auth, ou acesse pelo link oficial do aplicativo.`;
+  }
+  if (code === 'auth/operation-not-supported-in-this-environment') {
+    return 'Este navegador bloqueou cookies/armazenamento na janela atual. Clique em "Entrar sem popup (redirecionar)" ou abra o site em uma nova aba.';
+  }
+  if (code === 'auth/network-request-failed') {
+    return 'Falha de conexão com a internet ao tentar entrar com o Google.';
+  }
+  if (code === 'auth/internal-error') {
+    return 'O navegador bloqueou a janela de login dentro do quadro atual. Clique em "Entrar sem popup (redirecionar)" ou abra o link do app diretamente no navegador.';
+  }
+  return `Não foi possível entrar com o Google (${code || 'erro'}): ${msg}`;
+}
+
 function MainWorkspace() {
   const [user, setUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [loggingIn, setLoggingIn] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [retryTick, setRetryTick] = useState(0);
 
   const [accessRole, setAccessRole] = useState<AccessRole>(() => {
-    const saved = sessionStorage.getItem(ROLE_STORAGE_KEY);
+    const saved =
+      sessionStorage.getItem(ROLE_STORAGE_KEY) || localStorage.getItem(ROLE_STORAGE_KEY);
     return saved === 'client' ? 'client' : 'owner';
   });
 
@@ -69,16 +107,44 @@ function MainWorkspace() {
   const [whatsappPrompt, setWhatsappPrompt] = useState<WhatsappDispatchPrompt | null>(null);
 
   useEffect(() => {
+    let mounted = true;
+
+    void getRedirectResult(auth)
+      .then((res) => {
+        if (mounted && res?.user) {
+          setUser(res.user);
+          setAuthError(null);
+        }
+      })
+      .catch((err) => {
+        if (mounted) {
+          setAuthError(formatAuthError(err));
+        }
+      });
+
     const unsub = onAuthStateChanged(auth, (currentUser) => {
+      if (!mounted) return;
       setUser(currentUser);
       setAuthReady(true);
     });
-    return unsub;
+    return () => {
+      mounted = false;
+      unsub();
+    };
   }, []);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      setSyncError(null);
+      return;
+    }
     let active = true;
+    setSyncError(null);
+
+    const onSyncErr = (err: Error) => {
+      if (!active) return;
+      setSyncError(err.message || 'Erro ao sincronizar com o banco de dados.');
+    };
 
     const init = async () => {
       setSeeding(true);
@@ -89,6 +155,12 @@ function MainWorkspace() {
           await syncCompleteCatalogAndStockLinks(user.uid);
         }
         localStorage.setItem(syncKey, 'done');
+      } catch (err) {
+        if (active) {
+          setSyncError(
+            err instanceof Error ? err.message : 'Falha ao inicializar dados no banco de dados.'
+          );
+        }
       } finally {
         if (active) setSeeding(false);
       }
@@ -96,40 +168,84 @@ function MainWorkspace() {
     void init();
 
     const unsubs = [
-      subscribeStoreSettings(user.uid, (s) => {
-        if (active) setSettings(s);
-      }),
-      subscribeOwnerCollection<CustomHoliday>('customHolidays', user.uid, (list) => {
-        if (active) setCustomHolidays(list);
-      }),
-      subscribeOwnerCollection<Insumo>('insumos', user.uid, (list) => {
-        if (active) setInsumos(list);
-      }),
-      subscribeOwnerCollection<Product>('products', user.uid, (list) => {
-        if (active) setProducts(list);
-      }),
-      subscribeOwnerCollection<Customer>('customers', user.uid, (list) => {
-        if (active) setCustomers(list);
-      }),
-      subscribeOwnerCollection<Order>('orders', user.uid, (list) => {
-        if (active) setOrders(list);
-      }),
-      subscribeOwnerCollection<FiadoTransaction>('fiadoTransactions', user.uid, (list) => {
-        if (active) setFiadoTransactions(list);
-      }),
-      subscribeOwnerCollection<DailyExpense>('dailyExpenses', user.uid, (list) => {
-        if (active) setExpenses(list);
-      }),
-      subscribeOwnerCollection<WhatsappLog>('whatsappLogs', user.uid, (list) => {
-        if (active) setWhatsappLogs(list);
-      }),
+      subscribeStoreSettings(
+        user.uid,
+        (s) => {
+          if (active) setSettings(s);
+        },
+        onSyncErr
+      ),
+      subscribeOwnerCollection<CustomHoliday>(
+        'customHolidays',
+        user.uid,
+        (list) => {
+          if (active) setCustomHolidays(list);
+        },
+        onSyncErr
+      ),
+      subscribeOwnerCollection<Insumo>(
+        'insumos',
+        user.uid,
+        (list) => {
+          if (active) setInsumos(list);
+        },
+        onSyncErr
+      ),
+      subscribeOwnerCollection<Product>(
+        'products',
+        user.uid,
+        (list) => {
+          if (active) setProducts(list);
+        },
+        onSyncErr
+      ),
+      subscribeOwnerCollection<Customer>(
+        'customers',
+        user.uid,
+        (list) => {
+          if (active) setCustomers(list);
+        },
+        onSyncErr
+      ),
+      subscribeOwnerCollection<Order>(
+        'orders',
+        user.uid,
+        (list) => {
+          if (active) setOrders(list);
+        },
+        onSyncErr
+      ),
+      subscribeOwnerCollection<FiadoTransaction>(
+        'fiadoTransactions',
+        user.uid,
+        (list) => {
+          if (active) setFiadoTransactions(list);
+        },
+        onSyncErr
+      ),
+      subscribeOwnerCollection<DailyExpense>(
+        'dailyExpenses',
+        user.uid,
+        (list) => {
+          if (active) setExpenses(list);
+        },
+        onSyncErr
+      ),
+      subscribeOwnerCollection<WhatsappLog>(
+        'whatsappLogs',
+        user.uid,
+        (list) => {
+          if (active) setWhatsappLogs(list);
+        },
+        onSyncErr
+      ),
     ];
 
     return () => {
       active = false;
       unsubs.forEach((u) => u());
     };
-  }, [user]);
+  }, [user, retryTick]);
 
   const effectiveSettings: StoreSettings = useMemo(
     () =>
@@ -153,6 +269,7 @@ function MainWorkspace() {
   const updateRole = (role: AccessRole) => {
     setAccessRole(role);
     sessionStorage.setItem(ROLE_STORAGE_KEY, role);
+    localStorage.setItem(ROLE_STORAGE_KEY, role);
   };
 
   const handleLogin = async (role: AccessRole) => {
@@ -160,21 +277,34 @@ function MainWorkspace() {
     setLoggingIn(true);
     updateRole(role);
     try {
-      await signInWithPopup(auth, googleProvider);
+      const result = await signInWithPopup(auth, googleProvider);
+      if (result.user) {
+        setUser(result.user);
+      }
     } catch (err) {
-      setAuthError(
-        err instanceof Error
-          ? `Não foi possível entrar com o Google: ${err.message}`
-          : 'Erro ao conectar com o Google.'
-      );
+      setAuthError(formatAuthError(err));
     } finally {
+      setLoggingIn(false);
+    }
+  };
+
+  const handleLoginRedirect = async (role: AccessRole) => {
+    setAuthError(null);
+    setLoggingIn(true);
+    updateRole(role);
+    try {
+      await signInWithRedirect(auth, googleProvider);
+    } catch (err) {
+      setAuthError(formatAuthError(err));
       setLoggingIn(false);
     }
   };
 
   const handleLogout = async () => {
     sessionStorage.removeItem(ROLE_STORAGE_KEY);
+    localStorage.removeItem(ROLE_STORAGE_KEY);
     setAccessRole('owner');
+    setSyncError(null);
     await signOut(auth);
   };
 
@@ -187,7 +317,61 @@ function MainWorkspace() {
   }
 
   if (!user) {
-    return <AuthGate onLogin={handleLogin} authError={authError} loggingIn={loggingIn} />;
+    return (
+      <AuthGate
+        onLogin={handleLogin}
+        onLoginRedirect={handleLoginRedirect}
+        authError={authError}
+        loggingIn={loggingIn}
+      />
+    );
+  }
+
+  if (syncError) {
+    let readable = syncError;
+    try {
+      const parsed = JSON.parse(syncError);
+      if (parsed?.error) {
+        readable = `Erro ao acessar o banco de dados (${parsed.operationType} em ${parsed.path}): ${parsed.error}`;
+      }
+    } catch {
+      readable = syncError;
+    }
+
+    return (
+      <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-6">
+        <div className="max-w-lg w-full bg-zinc-900 border border-zinc-800 rounded-xl p-6 space-y-4">
+          <div className="flex items-center gap-3 text-amber-400">
+            <AlertTriangle className="w-6 h-6 shrink-0" />
+            <h1 className="text-lg font-semibold text-white">
+              Não foi possível carregar o banco de dados
+            </h1>
+          </div>
+          <p className="text-sm text-zinc-300 leading-relaxed break-words">{readable}</p>
+          <div className="flex flex-wrap gap-3 pt-2">
+            <button
+              type="button"
+              onClick={() => {
+                setSyncError(null);
+                setRetryTick((t) => t + 1);
+              }}
+              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-orange-600 rounded-lg hover:bg-orange-700"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Tentar novamente
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleLogout()}
+              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-zinc-200 bg-zinc-800 border border-zinc-700 rounded-lg hover:bg-zinc-700"
+            >
+              <LogOut className="w-4 h-4" />
+              Sair da conta
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (seeding && !settings) {
