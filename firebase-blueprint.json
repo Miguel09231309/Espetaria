@@ -1,0 +1,585 @@
+{
+  "entities": {
+    "StoreSettings": {
+      "title": "StoreSettings",
+      "description": "Configurações da barraca/espetinho, chave Pix, horários de domingo/feriado e modelos automáticos de WhatsApp.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "storeName": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "ownerWhatsapp": {
+          "type": "string",
+          "maxLength": 20
+        },
+        "pixKey": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "address": {
+          "type": "string",
+          "maxLength": 160
+        },
+        "operatingHours": {
+          "type": "string",
+          "maxLength": 60
+        },
+        "customerNotice": {
+          "type": "string",
+          "maxLength": 280
+        },
+        "confirmTemplate": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "readyTemplate": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "fiadoTemplate": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "ownerId",
+        "storeName",
+        "ownerWhatsapp",
+        "pixKey",
+        "address",
+        "operatingHours",
+        "customerNotice",
+        "confirmTemplate",
+        "readyTemplate",
+        "fiadoTemplate",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "CustomHoliday": {
+      "title": "CustomHoliday",
+      "description": "Feriados municipais, estaduais ou datas especiais em que a venda é liberada.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "date": {
+          "type": "string",
+          "maxLength": 10,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["ownerId", "date", "name", "createdAt"]
+    },
+    "Insumo": {
+      "title": "Insumo",
+      "description": "Insumos de estoque (carvão, carnes, bebidas, gelo, embalagens).",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "unit": {
+          "type": "string",
+          "enum": ["un", "kg", "L", "pct"],
+          "maxLength": 10
+        },
+        "currentStock": {
+          "type": "number"
+        },
+        "minStock": {
+          "type": "number"
+        },
+        "unitCost": {
+          "type": "number"
+        },
+        "supplier": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "ownerId",
+        "name",
+        "unit",
+        "currentStock",
+        "minStock",
+        "unitCost",
+        "supplier",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "Produtos do cardápio (espetinhos, refrigerantes, águas, acompanhamentos e combos).",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "category": {
+          "type": "string",
+          "enum": ["espetinho", "bebida", "acompanhamento", "combo"],
+          "maxLength": 20
+        },
+        "price": {
+          "type": "number"
+        },
+        "costPrice": {
+          "type": "number"
+        },
+        "insumoId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "insumoQtyPerUnit": {
+          "type": "number"
+        },
+        "extraInsumos": {
+          "type": "array"
+        },
+        "active": {
+          "type": "boolean"
+        },
+        "imageKey": {
+          "type": "string",
+          "enum": ["espetinho_carne", "linguica_coracao", "bebidas_geladas", "brasa_geral"],
+          "maxLength": 40
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "ownerId",
+        "name",
+        "category",
+        "price",
+        "costPrice",
+        "insumoId",
+        "insumoQtyPerUnit",
+        "active",
+        "imageKey",
+        "description",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Customer": {
+      "title": "Customer",
+      "description": "Clientes cadastrados com WhatsApp, saldo de fiado e histórico.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "whatsapp": {
+          "type": "string",
+          "maxLength": 20
+        },
+        "neighborhood": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "fiadoBalance": {
+          "type": "number"
+        },
+        "totalSpent": {
+          "type": "number"
+        },
+        "ordersCount": {
+          "type": "number"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "ownerId",
+        "name",
+        "whatsapp",
+        "neighborhood",
+        "notes",
+        "fiadoBalance",
+        "totalSpent",
+        "ordersCount",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Pedidos realizados exclusivamente em domingos e feriados.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "orderNumber": {
+          "type": "number"
+        },
+        "saleDate": {
+          "type": "string",
+          "maxLength": 10,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "dayType": {
+          "type": "string",
+          "enum": ["domingo", "feriado"],
+          "maxLength": 16
+        },
+        "holidayName": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "customerId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "customerName": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "customerWhatsapp": {
+          "type": "string",
+          "maxLength": 20
+        },
+        "deliveryType": {
+          "type": "string",
+          "enum": ["balcao", "retirada", "entrega"],
+          "maxLength": 20
+        },
+        "items": {
+          "type": "array"
+        },
+        "subtotal": {
+          "type": "number"
+        },
+        "discount": {
+          "type": "number"
+        },
+        "total": {
+          "type": "number"
+        },
+        "estimatedCost": {
+          "type": "number"
+        },
+        "estimatedProfit": {
+          "type": "number"
+        },
+        "paymentMethod": {
+          "type": "string",
+          "enum": ["pix", "dinheiro", "cartao", "fiado"],
+          "maxLength": 20
+        },
+        "paymentStatus": {
+          "type": "string",
+          "enum": ["pago", "fiado_pendente", "fiado_parcial"],
+          "maxLength": 20
+        },
+        "paidAmount": {
+          "type": "number"
+        },
+        "orderStatus": {
+          "type": "string",
+          "enum": ["novo", "confirmado", "na_brasa", "pronto", "entregue", "cancelado"],
+          "maxLength": 20
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 240
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "ownerId",
+        "orderNumber",
+        "saleDate",
+        "dayType",
+        "holidayName",
+        "customerId",
+        "customerName",
+        "customerWhatsapp",
+        "deliveryType",
+        "items",
+        "subtotal",
+        "discount",
+        "total",
+        "estimatedCost",
+        "estimatedProfit",
+        "paymentMethod",
+        "paymentStatus",
+        "paidAmount",
+        "orderStatus",
+        "notes",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "FiadoTransaction": {
+      "title": "FiadoTransaction",
+      "description": "Lançamentos de débito e quitação na caderneta de fiado.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "customerId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "customerName": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "orderId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "type": {
+          "type": "string",
+          "enum": ["debito", "pagamento"],
+          "maxLength": 20
+        },
+        "amount": {
+          "type": "number"
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 160
+        },
+        "paymentMethod": {
+          "type": "string",
+          "enum": ["pix", "dinheiro", "cartao", "fiado"],
+          "maxLength": 20
+        },
+        "date": {
+          "type": "string",
+          "maxLength": 10,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "ownerId",
+        "customerId",
+        "customerName",
+        "orderId",
+        "type",
+        "amount",
+        "description",
+        "paymentMethod",
+        "date",
+        "createdAt"
+      ]
+    },
+    "DailyExpense": {
+      "title": "DailyExpense",
+      "description": "Despesas operacionais extras (carvão, gelo, gás, insumos).",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "date": {
+          "type": "string",
+          "maxLength": 10,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "category": {
+          "type": "string",
+          "enum": ["carvao", "insumos", "gelo", "gas", "outros"],
+          "maxLength": 20
+        },
+        "amount": {
+          "type": "number"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["ownerId", "date", "description", "category", "amount", "createdAt"]
+    },
+    "WhatsappLog": {
+      "title": "WhatsappLog",
+      "description": "Histórico de mensagens automáticas preparadas/enviadas via WhatsApp.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "customerId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "customerName": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "whatsapp": {
+          "type": "string",
+          "maxLength": 20
+        },
+        "orderId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "type": {
+          "type": "string",
+          "enum": ["confirmacao_pedido", "pedido_pronto", "cobranca_fiado", "comunicado"],
+          "maxLength": 30
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "ownerId",
+        "customerId",
+        "customerName",
+        "whatsapp",
+        "orderId",
+        "type",
+        "message",
+        "createdAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/storeSettings/{ownerId}": {
+      "schema": { "$ref": "#/entities/StoreSettings" },
+      "description": "Configurações da loja isoladas por proprietário"
+    },
+    "/customHolidays/{holidayId}": {
+      "schema": { "$ref": "#/entities/CustomHoliday" },
+      "description": "Feriados customizados cadastrados pelo proprietário"
+    },
+    "/insumos/{insumoId}": {
+      "schema": { "$ref": "#/entities/Insumo" },
+      "description": "Estoque de insumos do proprietário"
+    },
+    "/products/{productId}": {
+      "schema": { "$ref": "#/entities/Product" },
+      "description": "Produtos do cardápio do proprietário"
+    },
+    "/customers/{customerId}": {
+      "schema": { "$ref": "#/entities/Customer" },
+      "description": "Clientes e saldos de fiado do proprietário"
+    },
+    "/orders/{orderId}": {
+      "schema": { "$ref": "#/entities/Order" },
+      "description": "Pedidos de domingos e feriados do proprietário"
+    },
+    "/fiadoTransactions/{txId}": {
+      "schema": { "$ref": "#/entities/FiadoTransaction" },
+      "description": "Histórico de débitos e pagamentos de fiado"
+    },
+    "/dailyExpenses/{expenseId}": {
+      "schema": { "$ref": "#/entities/DailyExpense" },
+      "description": "Despesas diárias do negócio"
+    },
+    "/whatsappLogs/{logId}": {
+      "schema": { "$ref": "#/entities/WhatsappLog" },
+      "description": "Registro de mensagens de WhatsApp para cobranças e notificações"
+    }
+  }
+}

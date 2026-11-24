@@ -1,0 +1,6 @@
+{
+  "name": "Brasa de Domingo",
+  "description": "Sistema de controle de vendas para domingos e feriados de espetinho, bebidas, estoque de insumos, fiado, WhatsApp automático e lucro semanal.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,414 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Safety Net: Default-deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Primitive Helpers ---
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+
+    function isOwnerDoc(data) {
+      return isSignedIn() && data.ownerId == request.auth.uid;
+    }
+
+    function isValidDateString(val) {
+      return val is string && val.size() == 10 && val.matches('^\\d{4}-\\d{2}-\\d{2}$');
+    }
+
+    function isNonNegNumber(val) {
+      return (val is int || val is float) && val >= 0;
+    }
+
+    // --- Entity Validation Blueprints ---
+    function isValidStoreSettings(data) {
+      return data.keys().hasAll([
+          'ownerId', 'storeName', 'ownerWhatsapp', 'pixKey', 'address',
+          'operatingHours', 'customerNotice', 'confirmTemplate',
+          'readyTemplate', 'fiadoTemplate', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'storeName', 'ownerWhatsapp', 'pixKey', 'address',
+          'operatingHours', 'customerNotice', 'confirmTemplate',
+          'readyTemplate', 'fiadoTemplate', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.ownerId)
+        && data.ownerId == request.auth.uid
+        && data.storeName is string && data.storeName.size() >= 1 && data.storeName.size() <= 80
+        && data.ownerWhatsapp is string && data.ownerWhatsapp.size() <= 20
+        && data.pixKey is string && data.pixKey.size() <= 100
+        && data.address is string && data.address.size() <= 160
+        && data.operatingHours is string && data.operatingHours.size() <= 60
+        && data.customerNotice is string && data.customerNotice.size() <= 280
+        && data.confirmTemplate is string && data.confirmTemplate.size() <= 500
+        && data.readyTemplate is string && data.readyTemplate.size() <= 500
+        && data.fiadoTemplate is string && data.fiadoTemplate.size() <= 500
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidCustomHoliday(data) {
+      return data.keys().hasAll(['ownerId', 'date', 'name', 'createdAt'])
+        && data.keys().hasOnly(['ownerId', 'date', 'name', 'createdAt'])
+        && isValidId(data.ownerId)
+        && data.ownerId == request.auth.uid
+        && isValidDateString(data.date)
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 80
+        && data.createdAt is timestamp;
+    }
+
+    function isValidInsumo(data) {
+      return data.keys().hasAll([
+          'ownerId', 'name', 'unit', 'currentStock', 'minStock',
+          'unitCost', 'supplier', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'name', 'unit', 'currentStock', 'minStock',
+          'unitCost', 'supplier', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.ownerId)
+        && data.ownerId == request.auth.uid
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 80
+        && data.unit is string && data.unit.size() <= 10 && data.unit in ['un', 'kg', 'L', 'pct']
+        && isNonNegNumber(data.currentStock)
+        && isNonNegNumber(data.minStock)
+        && isNonNegNumber(data.unitCost)
+        && data.supplier is string && data.supplier.size() <= 80
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidProduct(data) {
+      return data.keys().hasAll([
+          'ownerId', 'name', 'category', 'price', 'costPrice',
+          'insumoId', 'insumoQtyPerUnit', 'active', 'imageKey',
+          'description', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'name', 'category', 'price', 'costPrice',
+          'insumoId', 'insumoQtyPerUnit', 'extraInsumos', 'active', 'imageKey',
+          'description', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.ownerId)
+        && data.ownerId == request.auth.uid
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 80
+        && data.category is string && data.category.size() <= 20
+        && data.category in ['espetinho', 'bebida', 'acompanhamento', 'combo']
+        && isNonNegNumber(data.price)
+        && isNonNegNumber(data.costPrice)
+        && data.insumoId is string && data.insumoId.size() <= 128
+        && isNonNegNumber(data.insumoQtyPerUnit)
+        && (!('extraInsumos' in data) || (data.extraInsumos is list && data.extraInsumos.size() <= 10))
+        && data.active is bool
+        && data.imageKey is string && data.imageKey.size() <= 40
+        && data.imageKey in ['espetinho_carne', 'linguica_coracao', 'bebidas_geladas', 'brasa_geral']
+        && data.description is string && data.description.size() <= 200
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidCustomer(data) {
+      return data.keys().hasAll([
+          'ownerId', 'name', 'whatsapp', 'neighborhood', 'notes',
+          'fiadoBalance', 'totalSpent', 'ordersCount', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'name', 'whatsapp', 'neighborhood', 'notes',
+          'fiadoBalance', 'totalSpent', 'ordersCount', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.ownerId)
+        && data.ownerId == request.auth.uid
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 80
+        && data.whatsapp is string && data.whatsapp.size() <= 20
+        && data.neighborhood is string && data.neighborhood.size() <= 80
+        && data.notes is string && data.notes.size() <= 200
+        && isNonNegNumber(data.fiadoBalance)
+        && isNonNegNumber(data.totalSpent)
+        && isNonNegNumber(data.ordersCount)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidOrder(data) {
+      return data.keys().hasAll([
+          'ownerId', 'orderNumber', 'saleDate', 'dayType', 'holidayName',
+          'customerId', 'customerName', 'customerWhatsapp', 'deliveryType',
+          'items', 'subtotal', 'discount', 'total', 'estimatedCost',
+          'estimatedProfit', 'paymentMethod', 'paymentStatus', 'paidAmount',
+          'orderStatus', 'notes', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'orderNumber', 'saleDate', 'dayType', 'holidayName',
+          'customerId', 'customerName', 'customerWhatsapp', 'deliveryType',
+          'items', 'subtotal', 'discount', 'total', 'estimatedCost',
+          'estimatedProfit', 'paymentMethod', 'paymentStatus', 'paidAmount',
+          'orderStatus', 'notes', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.ownerId)
+        && data.ownerId == request.auth.uid
+        && isNonNegNumber(data.orderNumber)
+        && isValidDateString(data.saleDate)
+        && data.dayType is string && data.dayType.size() <= 16 && data.dayType in ['domingo', 'feriado']
+        && data.holidayName is string && data.holidayName.size() <= 80
+        && data.customerId is string && data.customerId.size() <= 128
+        && data.customerName is string && data.customerName.size() >= 1 && data.customerName.size() <= 80
+        && data.customerWhatsapp is string && data.customerWhatsapp.size() <= 20
+        && data.deliveryType is string && data.deliveryType.size() <= 20 && data.deliveryType in ['balcao', 'retirada', 'entrega']
+        && data.items is list && data.items.size() >= 1 && data.items.size() <= 25
+        && data.items[0] is map
+        && isNonNegNumber(data.subtotal)
+        && isNonNegNumber(data.discount)
+        && isNonNegNumber(data.total)
+        && isNonNegNumber(data.estimatedCost)
+        && (data.estimatedProfit is int || data.estimatedProfit is float)
+        && data.paymentMethod is string && data.paymentMethod.size() <= 20 && data.paymentMethod in ['pix', 'dinheiro', 'cartao', 'fiado']
+        && data.paymentStatus is string && data.paymentStatus.size() <= 20 && data.paymentStatus in ['pago', 'fiado_pendente', 'fiado_parcial']
+        && isNonNegNumber(data.paidAmount)
+        && data.orderStatus is string && data.orderStatus.size() <= 20
+        && data.orderStatus in ['novo', 'confirmado', 'na_brasa', 'pronto', 'entregue', 'cancelado']
+        && data.notes is string && data.notes.size() <= 240
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidFiadoTransaction(data) {
+      return data.keys().hasAll([
+          'ownerId', 'customerId', 'customerName', 'orderId',
+          'type', 'amount', 'description', 'paymentMethod', 'date', 'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'customerId', 'customerName', 'orderId',
+          'type', 'amount', 'description', 'paymentMethod', 'date', 'createdAt'
+        ])
+        && isValidId(data.ownerId)
+        && data.ownerId == request.auth.uid
+        && isValidId(data.customerId)
+        && data.customerName is string && data.customerName.size() >= 1 && data.customerName.size() <= 80
+        && data.orderId is string && data.orderId.size() <= 128
+        && data.type is string && data.type.size() <= 20 && data.type in ['debito', 'pagamento']
+        && isNonNegNumber(data.amount) && data.amount > 0
+        && data.description is string && data.description.size() >= 1 && data.description.size() <= 160
+        && data.paymentMethod is string && data.paymentMethod.size() <= 20 && data.paymentMethod in ['pix', 'dinheiro', 'cartao', 'fiado']
+        && isValidDateString(data.date)
+        && data.createdAt is timestamp;
+    }
+
+    function isValidDailyExpense(data) {
+      return data.keys().hasAll(['ownerId', 'date', 'description', 'category', 'amount', 'createdAt'])
+        && data.keys().hasOnly(['ownerId', 'date', 'description', 'category', 'amount', 'createdAt'])
+        && isValidId(data.ownerId)
+        && data.ownerId == request.auth.uid
+        && isValidDateString(data.date)
+        && data.description is string && data.description.size() >= 1 && data.description.size() <= 120
+        && data.category is string && data.category.size() <= 20 && data.category in ['carvao', 'insumos', 'gelo', 'gas', 'outros']
+        && isNonNegNumber(data.amount) && data.amount > 0
+        && data.createdAt is timestamp;
+    }
+
+    function isValidWhatsappLog(data) {
+      return data.keys().hasAll([
+          'ownerId', 'customerId', 'customerName', 'whatsapp',
+          'orderId', 'type', 'message', 'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'customerId', 'customerName', 'whatsapp',
+          'orderId', 'type', 'message', 'createdAt'
+        ])
+        && isValidId(data.ownerId)
+        && data.ownerId == request.auth.uid
+        && data.customerId is string && data.customerId.size() <= 128
+        && data.customerName is string && data.customerName.size() >= 1 && data.customerName.size() <= 80
+        && data.whatsapp is string && data.whatsapp.size() <= 20
+        && data.orderId is string && data.orderId.size() <= 128
+        && data.type is string && data.type.size() <= 30
+        && data.type in ['confirmacao_pedido', 'pedido_pronto', 'cobranca_fiado', 'comunicado']
+        && data.message is string && data.message.size() >= 1 && data.message.size() <= 1000
+        && data.createdAt is timestamp;
+    }
+
+    // --- Collection Rules ---
+
+    match /storeSettings/{ownerId} {
+      allow get: if isSignedIn() && isValidId(ownerId) && ownerId == request.auth.uid;
+      allow list: if false;
+      allow create: if isSignedIn()
+        && isValidId(ownerId)
+        && ownerId == request.auth.uid
+        && isValidStoreSettings(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isSignedIn()
+        && isValidId(ownerId)
+        && ownerId == request.auth.uid
+        && isValidStoreSettings(incoming())
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'storeName', 'ownerWhatsapp', 'pixKey', 'address', 'operatingHours',
+          'customerNotice', 'confirmTemplate', 'readyTemplate', 'fiadoTemplate', 'updatedAt'
+        ]);
+      allow delete: if false;
+    }
+
+    match /customHolidays/{holidayId} {
+      allow get: if isValidId(holidayId) && isOwnerDoc(existing());
+      allow list: if isOwnerDoc(existing());
+      allow create: if isSignedIn()
+        && isValidId(holidayId)
+        && isValidCustomHoliday(incoming())
+        && incoming().createdAt == request.time;
+      allow update: if false;
+      allow delete: if isValidId(holidayId) && isOwnerDoc(existing());
+    }
+
+    match /insumos/{insumoId} {
+      allow get: if isValidId(insumoId) && isOwnerDoc(existing());
+      allow list: if isOwnerDoc(existing());
+      allow create: if isSignedIn()
+        && isValidId(insumoId)
+        && isValidInsumo(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isSignedIn()
+        && isValidId(insumoId)
+        && isOwnerDoc(existing())
+        && isValidInsumo(incoming())
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          incoming().diff(existing()).affectedKeys().hasOnly(['currentStock', 'updatedAt']) ||
+          incoming().diff(existing()).affectedKeys().hasOnly(['name', 'unit', 'currentStock', 'minStock', 'unitCost', 'supplier', 'updatedAt'])
+        );
+      allow delete: if isValidId(insumoId) && isOwnerDoc(existing());
+    }
+
+    match /products/{productId} {
+      allow get: if isValidId(productId) && isOwnerDoc(existing());
+      allow list: if isOwnerDoc(existing());
+      allow create: if isSignedIn()
+        && isValidId(productId)
+        && isValidProduct(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isSignedIn()
+        && isValidId(productId)
+        && isOwnerDoc(existing())
+        && isValidProduct(incoming())
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          incoming().diff(existing()).affectedKeys().hasOnly(['active', 'updatedAt']) ||
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'name', 'category', 'price', 'costPrice', 'insumoId',
+            'insumoQtyPerUnit', 'extraInsumos', 'active', 'imageKey', 'description', 'updatedAt'
+          ])
+        );
+      allow delete: if isValidId(productId) && isOwnerDoc(existing());
+    }
+
+    match /customers/{customerId} {
+      allow get: if isValidId(customerId) && isOwnerDoc(existing());
+      allow list: if isOwnerDoc(existing());
+      allow create: if isSignedIn()
+        && isValidId(customerId)
+        && isValidCustomer(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isSignedIn()
+        && isValidId(customerId)
+        && isOwnerDoc(existing())
+        && isValidCustomer(incoming())
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          incoming().diff(existing()).affectedKeys().hasOnly(['fiadoBalance', 'updatedAt']) ||
+          incoming().diff(existing()).affectedKeys().hasOnly(['fiadoBalance', 'totalSpent', 'ordersCount', 'updatedAt']) ||
+          incoming().diff(existing()).affectedKeys().hasOnly(['name', 'whatsapp', 'neighborhood', 'notes', 'updatedAt'])
+        );
+      allow delete: if isValidId(customerId) && isOwnerDoc(existing());
+    }
+
+    match /orders/{orderId} {
+      allow get: if isValidId(orderId) && isOwnerDoc(existing());
+      allow list: if isOwnerDoc(existing());
+      allow create: if isSignedIn()
+        && isValidId(orderId)
+        && isValidOrder(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isSignedIn()
+        && isValidId(orderId)
+        && isOwnerDoc(existing())
+        && existing().orderStatus != 'cancelado'
+        && isValidOrder(incoming())
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          incoming().diff(existing()).affectedKeys().hasOnly(['orderStatus', 'updatedAt']) ||
+          incoming().diff(existing()).affectedKeys().hasOnly(['paymentStatus', 'paidAmount', 'updatedAt']) ||
+          incoming().diff(existing()).affectedKeys().hasOnly(['saleDate', 'dayType', 'holidayName', 'updatedAt'])
+        );
+      allow delete: if isValidId(orderId) && isOwnerDoc(existing());
+    }
+
+    match /fiadoTransactions/{txId} {
+      allow get: if isValidId(txId) && isOwnerDoc(existing());
+      allow list: if isOwnerDoc(existing());
+      allow create: if isSignedIn()
+        && isValidId(txId)
+        && isValidFiadoTransaction(incoming())
+        && incoming().createdAt == request.time;
+      allow update: if false;
+      allow delete: if isValidId(txId) && isOwnerDoc(existing());
+    }
+
+    match /dailyExpenses/{expenseId} {
+      allow get: if isValidId(expenseId) && isOwnerDoc(existing());
+      allow list: if isOwnerDoc(existing());
+      allow create: if isSignedIn()
+        && isValidId(expenseId)
+        && isValidDailyExpense(incoming())
+        && incoming().createdAt == request.time;
+      allow update: if isSignedIn()
+        && isValidId(expenseId)
+        && isOwnerDoc(existing())
+        && isValidDailyExpense(incoming())
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt
+        && incoming().diff(existing()).affectedKeys().hasOnly(['date']);
+      allow delete: if isValidId(expenseId) && isOwnerDoc(existing());
+    }
+
+    match /whatsappLogs/{logId} {
+      allow get: if isValidId(logId) && isOwnerDoc(existing());
+      allow list: if isOwnerDoc(existing());
+      allow create: if isSignedIn()
+        && isValidId(logId)
+        && isValidWhatsappLog(incoming())
+        && incoming().createdAt == request.time;
+      allow update: if false;
+      allow delete: if isValidId(logId) && isOwnerDoc(existing());
+    }
+  }
+}
